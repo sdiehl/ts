@@ -1,9 +1,9 @@
+{-# LANGUAGE RankNTypes #-}
 {-# LANGUAGE DeriveGeneric #-}
 {-# LANGUAGE OverloadedLists #-}
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE DeriveDataTypeable #-}
 {-# LANGUAGE GeneralizedNewtypeDeriving #-}
-{-# LANGUAGE RankNTypes #-}
 
 module Query (
   Expr(..),
@@ -23,6 +23,9 @@ import Data.Time.Clock.POSIX
 import Data.Time.Format
 import Data.Time.Calendar
 import Data.Time.LocalTime
+
+import Data.Convertible
+import Data.Convertible.Instances.Time
 
 import qualified Data.Vector.Storable as V
 
@@ -57,7 +60,7 @@ data Op
   deriving (Eq, Ord, Show)
 
 gt      = EOp Gt
-lt      = EOp Gt
+lt      = EOp Lt
 eq      = EOp Eq
 inRange = EOp InRange
 and     = EOp And
@@ -71,17 +74,37 @@ data Val
 -- Evaluator
 -------------------------------------------------------------------------------
 
+{-# INLINE ts2int #-}
+ts2int :: UTCTime -> Int
+ts2int x =
+  case safeConvert x of
+    Right y -> y
+    Left err -> error "timestamp conversion is always defined"
+
 vcompose :: Val -> Val -> Val
 vcompose (ICmp f) (ICmp g) = ICmp (\x -> f x && g x)
 vcompose (IUnary f) (IUnary g) = IUnary (\x -> f (g x))
 vcompose (IUnary f) (IBinary g) = IBinary (\x y -> f (g x y))
 
-vselect :: Expr -> Val
-vselect (EOp Gt ETime (ETimestamp t1)) = ICmp (> t1')
-  where
-    t1' :: Int
-    t1' = undefined (utcTimeToPOSIXSeconds t1)
-vselect (EOp And a b) = vcompose (vselect a) (vselect b)
+vexpr :: Expr -> Val
+vexpr (EOp Gt ETime (ETimestamp x)) = ICmp (> ts2int x)
+vexpr (EOp Lt ETime (ETimestamp x)) = ICmp (< ts2int x)
+vexpr (EOp And a b) = vcompose (vexpr a) (vexpr b)
+
+vstmt :: Stmt -> V.Vector Int -> V.Vector Int
+vstmt (Select col src p) vec = V.filter (icmp (vexpr p)) vec
+
+icmp :: Val -> (Int -> Bool)
+icmp (ICmp f) = f
+
+iun :: Val -> (Int -> Int)
+iun (IUnary f) = f
+
+ibin :: Val -> (Int -> Int -> Int)
+ibin (IBinary f) = f
+
+test :: V.Vector Int
+test = vstmt expr (V.fromList [1..200])
 
 -------------------------------------------------------------------------------
 -- Tests
@@ -99,7 +122,6 @@ expr =
     ((ETime `gt` (ETimestamp t1))
         `and`
      (ETime `lt` (ETimestamp t2)))
-
 
 {-
 

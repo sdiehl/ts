@@ -21,6 +21,10 @@ import Control.Exception
 import GHC.Generics
 
 import Data.Monoid
+
+import Data.Convertible
+import Data.Convertible.Instances.Time
+
 import Control.Applicative
 import Control.Monad (when)
 
@@ -88,8 +92,6 @@ exammpleDb = Db
 -- Column
 -------------------------------------------------------------------------------
 
-data WriteOp = Success | Fail
-
 toColPath :: Name -> FilePath
 toColPath (Name nm) = B8.unpack nm
 
@@ -121,7 +123,7 @@ main = do
   case mdb of
     Left err -> print err
     Right db -> do
-      rc <- writeTs db "accounts" ([1..100000] :: V.Vector Int) ([1..100000] :: V.Vector Int)
+      rc <- writeTs db "accounts" ([1..100] :: V.Vector Int) ([1..100] :: V.Vector Int)
       col <- readCol db "accounts"
       print (col :: (V.Vector Int, V.Vector Int))
       return ()
